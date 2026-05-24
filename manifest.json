@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "수업마법사",
+  "short_name": "수업마법사",
+  "version": "3.2.0",
+  "description": "교실 수업을 마법처럼 — 룰렛·타이머·캡처·QR·메모·화이트보드·커서",
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "수업마법사"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

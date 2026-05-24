@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>수업마법사</title>
+  <link rel="stylesheet" href="popup.css"/>
+</head>
+<body>
+
+<!-- 폭죽 오버레이 -->
+<div id="confetti-overlay" class="hidden">
+  <canvas id="confetti-canvas"></canvas>
+  <div id="winner-banner">
+    <div class="winner-emoji">🎉</div>
+    <div id="winner-name"></div>
+    <div class="winner-sub">발표자로 선정되었습니다!</div>
+    <button id="winner-close-btn">닫기</button>
+  </div>
+</div>
+
+<!-- 영역 캡처 오버레이 (content script로 주입) -->
+<div id="capture-overlay-msg" class="hidden">
+  <div class="capture-msg-box">
+    <div class="capture-msg-icon">✂️</div>
+    <div class="capture-msg-text">영역 캡처 모드</div>
+    <div class="capture-msg-sub">탭으로 이동 후 드래그로 영역을 선택합니다</div>
+    <button id="capture-cancel-msg" class="btn btn-ghost btn-sm">취소</button>
+  </div>
+</div>
+
+<div class="app-container">
+
+  <header class="app-header">
+    <span class="header-icon">🏫</span>
+    <span class="header-title">수업마법사</span>
+    <span class="header-ver">v3.2</span>
+  </header>
+
+  <!-- 탭 네비 (2행 × 5열) -->
+  <nav class="tab-nav">
+    <div class="tab-row">
+      <button class="tab-btn active" data-tab="picker">
+        <span class="tab-icon">🎲</span><span class="tab-label">룰렛</span>
+      </button>
+      <button class="tab-btn" data-tab="group">
+        <span class="tab-icon">👥</span><span class="tab-label">모둠</span>
+      </button>
+      <button class="tab-btn" data-tab="capture">
+        <span class="tab-icon">📸</span><span class="tab-label">캡처</span>
+      </button>
+      <button class="tab-btn" data-tab="timer">
+        <span class="tab-icon">⏱️</span><span class="tab-label">타이머</span>
+      </button>
+      <button class="tab-btn" data-tab="pomodoro">
+        <span class="tab-icon">🍅</span><span class="tab-label">뽀모도로</span>
+      </button>
+    </div>
+    <div class="tab-row">
+      <button class="tab-btn" data-tab="qr">
+        <span class="tab-icon">📷</span><span class="tab-label">QR</span>
+      </button>
+      <button class="tab-btn" data-tab="memo">
+        <span class="tab-icon">📝</span><span class="tab-label">메모</span>
+      </button>
+      <button class="tab-btn" data-tab="whiteboard">
+        <span class="tab-icon">🎨</span><span class="tab-label">칠판</span>
+      </button>
+      <button class="tab-btn" data-tab="cursor">
+        <span class="tab-icon">🖱️</span><span class="tab-label">커서</span>
+      </button>
+      <button class="tab-btn" data-tab="settings">
+        <span class="tab-icon">⚙️</span><span class="tab-label">설정</span>
+      </button>
+    </div>
+  </nav>
+
+  <main class="tab-content">
+
+    <!-- ══ 룰렛 ══ -->
+    <section id="tab-picker" class="tab-panel active">
+      <div class="panel-inner">
+        <div class="input-block">
+          <label class="input-label">📋 학생 이름 목록 (한 줄에 한 명)</label>
+          <textarea id="picker-names" class="textarea-names"
+            placeholder="홍길동&#10;김철수&#10;이영희&#10;박민준" rows="4"></textarea>
+          <div class="row-between">
+            <span id="picker-count" class="count-badge">0명</span>
+            <button id="picker-save-btn" class="btn btn-ghost btn-sm">💾 저장</button>
+          </div>
+        </div>
+        <div class="roulette-wrap">
+          <canvas id="roulette-canvas" width="210" height="210"></canvas>
+          <div class="roulette-arrow">▼</div>
+        </div>
+        <button id="pick-btn" class="btn btn-primary btn-lg btn-full">🎲 룰렛 돌리기!</button>
+        <div class="history-block">
+          <div class="row-between">
+            <span class="sub-label">🏆 최근 당첨 기록</span>
+            <button id="picker-history-clear" class="btn btn-ghost btn-xs">초기화</button>
+          </div>
+          <div id="picker-history" class="history-list">
+            <span class="empty-text">아직 기록이 없어요</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 모둠 ══ -->
+    <section id="tab-group" class="tab-panel">
+      <div class="panel-inner">
+        <div class="input-block">
+          <label class="input-label">📋 학생 이름 목록</label>
+          <textarea id="group-names" class="textarea-names"
+            placeholder="홍길동&#10;김철수&#10;이영희" rows="4"></textarea>
+          <span id="group-count" class="count-badge">0명</span>
+        </div>
+        <div class="qr-options-row">
+          <span class="option-label">모둠 수</span>
+          <div class="stepper">
+            <button class="stepper-btn" id="group-num-minus">−</button>
+            <span id="group-num-display" class="stepper-val">4</span>
+            <button class="stepper-btn" id="group-num-plus">+</button>
+          </div>
+        </div>
+        <button id="group-btn" class="btn btn-secondary btn-lg btn-full">👥 모둠 나누기!</button>
+        <div id="group-result" class="group-result hidden"></div>
+      </div>
+    </section>
+
+    <!-- ══ 📸 캡처 ══ -->
+    <section id="tab-capture" class="tab-panel">
+      <div class="panel-inner">
+
+        <div class="settings-section-title">📸 화면 캡처</div>
+        <p class="settings-desc">현재 탭 전체 또는 원하는 영역만 캡처합니다.</p>
+
+        <!-- 캡처 버튼 2종 -->
+        <div class="capture-btn-group">
+          <button id="capture-full-btn" class="btn btn-primary btn-lg btn-full">
+            🖥️ 전체 화면 캡처
+          </button>
+
+        </div>
+
+
+
+        <!-- 미리보기 -->
+        <div id="capture-preview-wrap" class="capture-preview-wrap hidden">
+          <div class="capture-preview-label" id="capture-preview-label">캡처 결과</div>
+          <img id="capture-preview" class="capture-preview" alt="캡처 미리보기"/>
+          <div class="capture-action-row">
+            <button id="capture-download-btn" class="btn btn-secondary btn-md">⬇️ PNG 저장</button>
+            <button id="capture-copy-btn"     class="btn btn-ghost btn-md">📋 복사</button>
+            <button id="capture-clear-btn"    class="btn btn-ghost btn-md">🗑️</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ══ 타이머 ══ -->
+    <section id="tab-timer" class="tab-panel">
+      <div class="panel-inner">
+        <div class="sub-tab-nav">
+          <button class="sub-tab-btn active" data-subtab="countdown">⏳ 타이머</button>
+          <button class="sub-tab-btn" data-subtab="stopwatch">⏱️ 스톱워치</button>
+        </div>
+        <div id="subtab-countdown" class="sub-tab-panel active">
+          <div class="time-setter">
+            <div class="time-unit">
+              <button class="time-arrow" data-target="min" data-dir="up">▲</button>
+              <div id="timer-min-display" class="time-digit">05</div>
+              <button class="time-arrow" data-target="min" data-dir="down">▼</button>
+              <span class="time-unit-label">분</span>
+            </div>
+            <div class="time-colon">:</div>
+            <div class="time-unit">
+              <button class="time-arrow" data-target="sec" data-dir="up">▲</button>
+              <div id="timer-sec-display" class="time-digit">00</div>
+              <button class="time-arrow" data-target="sec" data-dir="down">▼</button>
+              <span class="time-unit-label">초</span>
+            </div>
+          </div>
+          <div class="timer-circle-wrap">
+            <svg class="timer-svg" viewBox="0 0 120 120">
+              <circle class="timer-track" cx="60" cy="60" r="54"/>
+              <circle id="timer-progress-circle" class="timer-progress" cx="60" cy="60" r="54"/>
+            </svg>
+            <div class="timer-center-display">
+              <div id="timer-countdown-display" class="timer-main-time">05:00</div>
+              <div id="timer-status-label" class="timer-status">대기 중</div>
+            </div>
+          </div>
+          <div class="timer-controls">
+            <button id="timer-start-btn" class="btn btn-primary btn-md">▶ 시작</button>
+            <button id="timer-pause-btn" class="btn btn-ghost btn-md" disabled>⏸ 일시정지</button>
+            <button id="timer-reset-btn" class="btn btn-ghost btn-md">↺ 초기화</button>
+          </div>
+        </div>
+        <div id="subtab-stopwatch" class="sub-tab-panel">
+          <div class="stopwatch-display-wrap">
+            <div id="stopwatch-display" class="stopwatch-display">00:00.0</div>
+          </div>
+          <div class="timer-controls">
+            <button id="sw-start-btn" class="btn btn-secondary btn-md">▶ 시작</button>
+            <button id="sw-lap-btn"   class="btn btn-ghost btn-md" disabled>🏁 랩</button>
+            <button id="sw-reset-btn" class="btn btn-ghost btn-md">↺ 초기화</button>
+          </div>
+          <div id="sw-laps" class="sw-laps"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 뽀모도로 ══ -->
+    <section id="tab-pomodoro" class="tab-panel">
+      <div class="panel-inner">
+        <div class="pomo-mode-badge" id="pomo-mode-badge">🍅 집중 시간</div>
+        <div class="pomo-circle-wrap">
+          <svg class="pomo-svg" viewBox="0 0 160 160">
+            <circle class="pomo-track" cx="80" cy="80" r="70"/>
+            <circle id="pomo-progress" class="pomo-progress" cx="80" cy="80" r="70"/>
+          </svg>
+          <div class="pomo-center">
+            <div id="pomo-time" class="pomo-time">25:00</div>
+            <div id="pomo-label" class="pomo-label">시작 전</div>
+          </div>
+        </div>
+        <div class="pomo-cycles">
+          <span class="pomo-cycle-label">완료한 사이클</span>
+          <div id="pomo-dots" class="pomo-dots"></div>
+        </div>
+        <div class="pomo-settings-row">
+          <div class="pomo-setting-item">
+            <span class="pomo-setting-label">🍅 집중</span>
+            <div class="stepper">
+              <button class="stepper-btn" id="pomo-work-minus">−</button>
+              <span id="pomo-work-display" class="stepper-val" style="color:var(--c-danger)">25</span>
+              <button class="stepper-btn" id="pomo-work-plus">+</button>
+            </div>
+            <span class="pomo-setting-unit">분</span>
+          </div>
+          <div class="pomo-setting-item">
+            <span class="pomo-setting-label">☕ 휴식</span>
+            <div class="stepper">
+              <button class="stepper-btn" id="pomo-break-minus">−</button>
+              <span id="pomo-break-display" class="stepper-val" style="color:var(--c-secondary)">5</span>
+              <button class="stepper-btn" id="pomo-break-plus">+</button>
+            </div>
+            <span class="pomo-setting-unit">분</span>
+          </div>
+        </div>
+        <div class="timer-controls">
+          <button id="pomo-start-btn" class="btn btn-primary btn-md">▶ 시작</button>
+          <button id="pomo-skip-btn"  class="btn btn-ghost btn-md">⏭ 건너뛰기</button>
+          <button id="pomo-reset-btn" class="btn btn-ghost btn-md">↺ 초기화</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ QR코드 ══ -->
+    <section id="tab-qr" class="tab-panel">
+      <div class="panel-inner">
+        <div class="input-block">
+          <label class="input-label">🔗 링크 또는 텍스트 입력</label>
+          <input type="text" id="qr-url-input" class="qr-url-input"
+            placeholder="https://example.com" autocomplete="off" spellcheck="false"/>
+        </div>
+        <div class="qr-options-row">
+          <span class="option-label">오류 수정 레벨</span>
+          <div class="qr-level-btns">
+            <button class="qr-level-btn" data-level="L">L</button>
+            <button class="qr-level-btn" data-level="M">M</button>
+            <button class="qr-level-btn active" data-level="Q">Q</button>
+            <button class="qr-level-btn" data-level="H">H</button>
+          </div>
+        </div>
+        <div class="qr-options-row">
+          <span class="option-label">크기</span>
+          <div class="stepper">
+            <button class="stepper-btn" id="qr-size-minus">−</button>
+            <span id="qr-size-display" class="stepper-val">200</span>
+            <button class="stepper-btn" id="qr-size-plus">+</button>
+            <span class="option-label" style="margin-left:2px">px</span>
+          </div>
+        </div>
+        <button id="qr-generate-btn" class="btn btn-primary btn-lg btn-full">📷 QR코드 생성!</button>
+        <div id="qr-result-area" class="qr-result-area hidden">
+          <div class="qr-canvas-wrap"><canvas id="qr-canvas"></canvas></div>
+          <div id="qr-url-label" class="qr-url-label"></div>
+          <div class="qr-action-row">
+            <button id="qr-download-btn" class="btn btn-secondary btn-md">⬇️ 저장</button>
+            <button id="qr-copy-btn"     class="btn btn-ghost btn-md">📋 복사</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 메모 ══ -->
+    <section id="tab-memo" class="tab-panel">
+      <div class="panel-inner">
+        <div class="memo-header-row">
+          <input type="text" id="memo-subject" class="memo-subject-input"
+            placeholder="과목명 (예: 3학년 수학)" maxlength="30"/>
+          <span id="memo-date" class="memo-date-badge"></span>
+        </div>
+        <div class="memo-section-label">📌 오늘 수업 진도</div>
+        <div id="memo-checklist" class="memo-checklist"></div>
+        <div class="memo-add-row">
+          <input type="text" id="memo-new-item" class="memo-new-input"
+            placeholder="진도 항목 추가 (Enter)"/>
+          <button id="memo-add-btn" class="btn btn-primary btn-sm">+ 추가</button>
+        </div>
+        <div class="memo-section-label" style="margin-top:10px">✏️ 수업 메모</div>
+        <textarea id="memo-text" class="textarea-names memo-textarea"
+          placeholder="수업 중 메모를 자유롭게 적으세요. 자동 저장됩니다." rows="4"></textarea>
+        <div class="memo-action-row">
+          <button id="memo-save-btn"   class="btn btn-primary btn-md">💾 저장</button>
+          <button id="memo-export-btn" class="btn btn-ghost btn-md">📤 내보내기</button>
+          <button id="memo-clear-btn"  class="btn btn-ghost btn-md">🗑️ 초기화</button>
+        </div>
+        <div class="memo-history-label">
+          <span class="sub-label">🗂️ 저장된 메모</span>
+          <span id="memo-history-count" class="count-badge">0개</span>
+        </div>
+        <div id="memo-history-list" class="memo-history-list"></div>
+      </div>
+    </section>
+
+    <!-- ══ 화이트보드 ══ -->
+    <section id="tab-whiteboard" class="tab-panel">
+      <div class="wb-container">
+        <div class="wb-toolbar">
+          <div class="wb-tool-group">
+            <button class="wb-tool-btn active" id="wb-pen"       title="펜">✏️</button>
+            <button class="wb-tool-btn"        id="wb-highlight" title="형광펜">🖊️</button>
+            <button class="wb-tool-btn"        id="wb-eraser"    title="지우개">🧹</button>
+            <button class="wb-tool-btn"        id="wb-line"      title="직선">📏</button>
+            <button class="wb-tool-btn"        id="wb-rect"      title="사각형">⬜</button>
+            <button class="wb-tool-btn"        id="wb-circle"    title="원">⭕</button>
+            <button class="wb-tool-btn"        id="wb-text"      title="텍스트">T</button>
+          </div>
+          <div class="wb-color-group" id="wb-colors"></div>
+          <div class="wb-size-row">
+            <span class="wb-size-label">굵기</span>
+            <input type="range" id="wb-size" min="1" max="40" value="4" class="wb-slider"/>
+            <span id="wb-size-val" class="wb-size-num">4</span>
+          </div>
+          <div class="wb-action-row">
+            <button id="wb-undo"  class="btn btn-ghost btn-sm">↩ 취소</button>
+            <button id="wb-clear" class="btn btn-ghost btn-sm">🗑 전체삭제</button>
+            <button id="wb-save"  class="btn btn-secondary btn-sm">💾 저장</button>
+            <button id="wb-bg"    class="btn btn-ghost btn-sm">🌙 배경</button>
+          </div>
+        </div>
+        <canvas id="wb-canvas" class="wb-canvas"></canvas>
+        <input type="text" id="wb-text-input" class="wb-text-input hidden"
+          placeholder="텍스트 입력 후 Enter"/>
+      </div>
+    </section>
+
+    <!-- ══ 🖱️ 커서 설정 ══ -->
+    <section id="tab-cursor" class="tab-panel">
+      <div class="panel-inner">
+        <div class="settings-section-title">🖱️ 마우스 커서 설정</div>
+        <p class="settings-desc">원하는 모양과 크기를 선택한 뒤 <strong>적용</strong>을 눌러주세요.<br>현재 열려있는 탭에 즉시 반영됩니다.</p>
+
+        <!-- 커서 모양 선택 -->
+        <div class="cursor-grid" id="cursor-grid"></div>
+
+        <!-- 크기 슬라이더 (직관적으로 변경) -->
+        <div class="cursor-size-section">
+          <div class="cursor-size-label-row">
+            <span class="option-label">커서 크기</span>
+            <span id="cursor-size-display" class="cursor-size-badge">32px</span>
+          </div>
+          <input type="range" id="cursor-size-slider"
+            min="16" max="200" step="8" value="32" class="wb-slider cursor-slider"/>
+          <div class="cursor-size-hints">
+            <span>작게 (16)</span><span>보통 (64)</span><span>크게 (200)</span>
+          </div>
+        </div>
+
+        <!-- 미리보기 -->
+        <div class="cursor-preview-wrap">
+          <div id="cursor-preview-box" class="cursor-preview-box">
+            <span id="cursor-preview-label">👆 여기에 마우스를 올리면<br>선택한 커서가 미리보여요</span>
+          </div>
+        </div>
+
+        <div class="cursor-action-row">
+          <button id="cursor-apply-btn" class="btn btn-primary btn-lg" style="flex:1">✅ 현재 탭에 적용</button>
+          <button id="cursor-reset-btn" class="btn btn-ghost btn-md">↺ 기본으로</button>
+        </div>
+
+        <div id="cursor-status" class="cursor-status hidden"></div>
+      </div>
+    </section>
+
+    <!-- ══ 설정 ══ -->
+    <section id="tab-settings" class="tab-panel">
+      <div class="panel-inner">
+
+        <!-- 알람 소리 선택 -->
+        <div class="settings-section">
+          <div class="settings-section-title">🔔 알람 소리 선택</div>
+          <p class="settings-desc">타이머·뽀모도로 종료 시 재생될 소리를 선택하세요.</p>
+          <div class="sound-list" id="sound-list"></div>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">ℹ️ 앱 정보</div>
+          <p class="settings-desc">수업마법사 v3.2<br>교실용 수업 보조 미니 앱</p>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="qr-toast"></div>
+<script src="qrcode.min.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>
